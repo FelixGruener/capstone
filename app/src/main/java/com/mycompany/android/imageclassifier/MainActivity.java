@@ -1,13 +1,16 @@
 package com.mycompany.android.imageclassifier;
 
 import android.Manifest;
+import android.app.ProgressDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.os.Handler;
 import android.provider.MediaStore;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
@@ -18,24 +21,37 @@ import android.support.v7.widget.RecyclerView;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.Toast;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.bumptech.glide.Glide;
+import com.mycompany.android.imageclassifier.model.Feature;
+import com.mycompany.android.imageclassifier.model.Image;
+import com.mycompany.android.imageclassifier.model.ImageClassifierRequest;
+import com.mycompany.android.imageclassifier.model.Request;
+import com.mycompany.android.imageclassifier.networking.Client;
+import com.mycompany.android.imageclassifier.networking.Service;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.logging.Logger;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
-import static android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE;
+import static com.mycompany.android.imageclassifier.utils.Constants.BASE_URL;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener  {
     @BindView(R.id.selectImage)
@@ -56,8 +72,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private String mediaPath;
     private String mImageFileLocation = "";
     public static final String IMAGE_DIRECTORY_NAME = "Android File Upload";
-    private String postPath;
+    private String postPath = "";
     private static final String TAG = MainActivity.class.getSimpleName();
+    private ProgressDialog progressBar;
+    private int progressBarStatus = 0;
+    private Handler progressBarbHandler = new Handler();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,7 +84,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         setContentView(R.layout.activity_main);
 
         ButterKnife.bind(this);
-
+       // initpDialog();
         selectImage.setOnClickListener(this);
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
@@ -89,12 +108,33 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         MenuInflater inflater = getMenuInflater();
-        inflater.inflate(R.menu.search, menu);
+        inflater.inflate(R.menu.topbar, menu);
 
         return true;
     }
 
     @Override
+    public boolean onPrepareOptionsMenu(Menu menu) {
+        super.onPrepareOptionsMenu(menu);
+        if (postPath.isEmpty()) {
+            MenuItem menuItem = menu.findItem(R.id.upload);
+            menuItem.setVisible(false);
+        }
+
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.upload:
+                return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+
+        @Override
     public void onClick(View v) {
         switch (v.getId()) {
             case R.id.selectImage:
@@ -116,6 +156,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                                         break;
                                     case 2:
                                         image_header.setImageResource(R.color.colorPrimary);
+                                        postPath.equals("");
                                         break;
                                 }
                             }
@@ -178,6 +219,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         if (resultCode == RESULT_OK) {
             if (requestCode == REQUEST_TAKE_PHOTO || requestCode == REQUEST_PICK_PHOTO) {
                 if (data != null) {
+                    setProgressBar();
                     // Get the Image from data
                     Uri selectedImage = data.getData();
                     String[] filePathColumn = {MediaStore.Images.Media.DATA};
@@ -191,20 +233,28 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     // Set the Image in ImageView for Previewing the Media
                     image_header.setImageBitmap(BitmapFactory.decodeFile(mediaPath));
                     cursor.close();
-
                     postPath = mediaPath;
+                    invalidateOptionsMenu();
+                   // String image = uploadImage(postPath);
+                    //Toast.makeText(this, "this is base64, " + image, Toast.LENGTH_SHORT).show();
                 }
 
 
             }else if (requestCode == CAMERA_PIC_REQUEST){
                 if (Build.VERSION.SDK_INT > 21) {
-
+                    setProgressBar();
                     Glide.with(this).load(mImageFileLocation).into(image_header);
                     postPath = mImageFileLocation;
-
+                    invalidateOptionsMenu();
+                    //String image = uploadImage(postPath);
+                    //Toast.makeText(this, "this is base64, " + image, Toast.LENGTH_SHORT).show();
                 }else{
+                    setProgressBar();
                     Glide.with(this).load(fileUri).into(image_header);
                     postPath = fileUri.getPath();
+                    invalidateOptionsMenu();
+                    //String image = uploadImage(postPath);
+                    //Toast.makeText(this, "this is base64, " + image, Toast.LENGTH_SHORT).show();
                 }
             }
         }
@@ -300,4 +350,106 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         return mediaFile;
     }
+
+    private String uploadImage(String picturePath) {
+        Bitmap bm = BitmapFactory.decodeFile(picturePath);
+        ByteArrayOutputStream bao = new ByteArrayOutputStream();
+        String _bytes64Sting = "";
+        if (bm != null){
+            bm.compress(Bitmap.CompressFormat.JPEG, 90, bao);
+            byte[] byteArray = bao.toByteArray();
+            _bytes64Sting = Base64.encodeBytes(byteArray);
+        }else {
+
+        }
+
+        return _bytes64Sting;
+
+    }
+
+    private List<Feature> getFeature(){
+        List<Feature> featureList = new ArrayList<>();
+        Feature feature = new Feature("LANDMARK_DETECTION", 1);
+        Feature feature1 = new Feature("LABEL_DETECTION", 5);
+
+        featureList.add(feature);
+        featureList.add(feature1);
+
+        return featureList;
+    }
+
+    private List<Request> getRequests(String image){
+        List<Request> requestList = new ArrayList<>();
+
+        Request request = new Request(new Image(image), getFeature());
+        requestList.add(request);
+        return requestList;
+    }
+
+    private void submitFile(){
+        try {
+            Service service = Client.createService(Service.class, BASE_URL);
+            Call<ImageClassifierRequest> call = service.imageClassifier(BuildConfig.VISION_API, new ImageClassifierRequest());
+            call.enqueue(new Callback<ImageClassifierRequest>() {
+                @Override
+                public void onResponse(Call<ImageClassifierRequest> call, Response<ImageClassifierRequest> response) {
+                    if (response.isSuccessful()){
+                        if (response.body() != null){
+
+                        }
+                    }
+                }
+
+                @Override
+                public void onFailure(Call<ImageClassifierRequest> call, Throwable t) {
+
+                }
+            });
+        } catch (Exception e){
+
+        }
+    }
+
+    public void setProgressBar(){
+        progressBar = new ProgressDialog(this);
+        progressBar.setCancelable(true);
+        progressBar.setMessage("Please wait...");
+        progressBar.setProgressStyle(ProgressDialog.STYLE_SPINNER);
+        progressBar.setProgress(0);
+        progressBar.setMax(100);
+        progressBar.show();
+        progressBarStatus = 0;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while (progressBarStatus < 100){
+                    progressBarStatus += 30;
+
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
+                    progressBarbHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            progressBar.setProgress(progressBarStatus);
+                        }
+                    });
+                }
+                if (progressBarStatus >= 100) {
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    progressBar.dismiss();
+                }
+
+            }
+        }).start();
+    }
+
+
 }

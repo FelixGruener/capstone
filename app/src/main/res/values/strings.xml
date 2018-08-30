@@ -4,4 +4,5 @@
     <string name="search_hint">Search</string>
     <string name="upload_file">Upload file</string>
     <string name="uploadImages">Set your image</string>
+    <string name="msg_loading">loading...</string>
 </resources>
