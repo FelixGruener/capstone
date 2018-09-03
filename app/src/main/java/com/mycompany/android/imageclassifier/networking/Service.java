@@ -16,7 +16,7 @@ import retrofit2.http.Query;
  */
 public interface Service {
 
-    @POST("images:annotate")
+    @POST("images")
     Call<ImageClassifierRequest> imageClassifier(@Query("key") String apiKey, @Body ImageClassifierRequest s);
 
 }

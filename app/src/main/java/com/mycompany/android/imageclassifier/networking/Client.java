@@ -20,7 +20,7 @@ import retrofit2.converter.gson.GsonConverterFactory;
  */
 public class Client {
     public static <S> S createService(Class<S> serviceClass, String baseUrl) {
-        baseUrl = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
+        //baseUrl = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
         String token = "";
         Gson gson = new GsonBuilder()
                 .enableComplexMapKeySerialization()

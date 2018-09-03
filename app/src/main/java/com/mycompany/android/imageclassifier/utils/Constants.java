@@ -6,4 +6,5 @@ package com.mycompany.android.imageclassifier.utils;
 
 public interface Constants {
     String BASE_URL = "https://vision.googleapis.com/v1/";
+    String TOKEN = "token";
 }
