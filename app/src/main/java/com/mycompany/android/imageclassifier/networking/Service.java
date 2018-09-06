@@ -1,10 +1,8 @@
 package com.mycompany.android.imageclassifier.networking;
 
 
-import com.mycompany.android.imageclassifier.model.ImageClassifierRequest;
-import com.mycompany.android.imageclassifier.model.Request;
-
-import java.util.List;
+import com.mycompany.android.imageclassifier.model.request.ImageClassifierRequest;
+import com.mycompany.android.imageclassifier.model.response.ImageClassifierResponse;
 
 import retrofit2.Call;
 import retrofit2.http.Body;
@@ -16,7 +14,7 @@ import retrofit2.http.Query;
  */
 public interface Service {
 
-    @POST("images")
-    Call<ImageClassifierRequest> imageClassifier(@Query("key") String apiKey, @Body ImageClassifierRequest s);
+    @POST("v1/images:annotate")
+    Call<ImageClassifierResponse> imageClassifier(@Query("key") String apiKey, @Body ImageClassifierRequest s);
 
 }

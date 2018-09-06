@@ -5,4 +5,5 @@
     <string name="upload_file">Upload file</string>
     <string name="uploadImages">Set your image</string>
     <string name="msg_loading">Scanning image with Vision API...</string>
+    <string name="classification">Classification Review</string>
 </resources>

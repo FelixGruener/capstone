@@ -1,26 +1,27 @@
 package com.mycompany.android.imageclassifier;
 
 import android.Manifest;
-import android.accounts.Account;
-import android.accounts.AccountManager;
-import android.annotation.SuppressLint;
 import android.app.ProgressDialog;
+import android.arch.lifecycle.Observer;
+import android.arch.lifecycle.ViewModelProviders;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
-import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.provider.MediaStore;
+import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.content.FileProvider;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.widget.DividerItemDecoration;
+import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.util.Log;
 import android.view.Menu;
@@ -32,25 +33,24 @@ import android.widget.Toast;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.bumptech.glide.Glide;
-import com.google.android.gms.auth.GoogleAuthUtil;
-import com.google.android.gms.common.AccountPicker;
-import com.google.api.client.extensions.android.http.AndroidHttp;
-import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
-import com.google.api.client.googleapis.json.GoogleJsonResponseException;
-import com.google.api.client.http.HttpTransport;
-import com.google.api.client.json.JsonFactory;
-import com.google.api.client.json.gson.GsonFactory;
-import com.google.api.services.vision.v1.Vision;
-import com.google.api.services.vision.v1.model.AnnotateImageRequest;
-import com.google.api.services.vision.v1.model.BatchAnnotateImagesRequest;
-import com.google.api.services.vision.v1.model.BatchAnnotateImagesResponse;
-import com.google.api.services.vision.v1.model.Image;
-import com.mycompany.android.imageclassifier.model.Feature;
-import com.mycompany.android.imageclassifier.model.ImageClassifierRequest;
-import com.mycompany.android.imageclassifier.model.Request;
+import com.mycompany.android.imageclassifier.ViewModel.AppExecutors;
+import com.mycompany.android.imageclassifier.ViewModel.MainViewModel;
+import com.mycompany.android.imageclassifier.adapter.ClassifierAdapter;
+import com.mycompany.android.imageclassifier.database.AppDatabase;
+import com.mycompany.android.imageclassifier.database.ImageEntry;
+import com.mycompany.android.imageclassifier.model.request.Image;
+import com.mycompany.android.imageclassifier.model.request.Feature;
+import com.mycompany.android.imageclassifier.model.request.ImageClassifierRequest;
+import com.mycompany.android.imageclassifier.model.request.Request;
+import com.mycompany.android.imageclassifier.model.response.LabelAnnotation;
+import com.mycompany.android.imageclassifier.model.response.LandmarkAnnotation;
+import com.mycompany.android.imageclassifier.model.response.LatLng;
+import com.mycompany.android.imageclassifier.model.response.Location;
+import com.mycompany.android.imageclassifier.model.response.Response;
+import com.mycompany.android.imageclassifier.model.response.ImageClassifierResponse;
 import com.mycompany.android.imageclassifier.networking.Client;
 import com.mycompany.android.imageclassifier.networking.Service;
-import com.mycompany.android.imageclassifier.utils.PreferenceUtils;
+import com.mycompany.android.imageclassifier.utils.Base64;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -66,11 +66,11 @@ import butterknife.BindView;
 import butterknife.ButterKnife;
 import retrofit2.Call;
 import retrofit2.Callback;
-import retrofit2.Response;
 
+import static android.widget.LinearLayout.VERTICAL;
 import static com.mycompany.android.imageclassifier.utils.Constants.BASE_URL;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements ClassifierAdapter.ItemClickListener{
     @BindView(R.id.selectImage)
     ImageView selectImage;
 
@@ -94,11 +94,9 @@ public class MainActivity extends AppCompatActivity {
     private ProgressDialog progressBar;
     private int progressBarStatus = 0;
     private Handler progressBarbHandler = new Handler();
-    private Account mAccount;
-    private static String accessToken;
-    private static final int REQUEST_CODE_PICK_ACCOUNT = 101;
-    private static final int REQUEST_ACCOUNT_AUTHORIZATION = 102;
-    private Bitmap bm;
+    private byte[] byteArray;
+    private AppDatabase mDb;
+    private ClassifierAdapter mAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -110,13 +108,22 @@ public class MainActivity extends AppCompatActivity {
         selectImage.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if ((ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) && (ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.GET_ACCOUNTS) != PackageManager.PERMISSION_GRANTED)) {
-                    ActivityCompat.requestPermissions(MainActivity.this, new String[] { Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.GET_ACCOUNTS }, 0);
+                if ((ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)) {
+                    ActivityCompat.requestPermissions(MainActivity.this, new String[] { Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE }, 0);
                 } else {
                     launchImagePicker();
                 }
             }
         });
+        mDb = AppDatabase.getInstance(getApplicationContext());
+
+        recycler_view.setLayoutManager(new LinearLayoutManager(this));
+        mAdapter = new ClassifierAdapter(this, this);
+        recycler_view.setAdapter(mAdapter);
+        DividerItemDecoration decoration = new DividerItemDecoration(getApplicationContext(), VERTICAL);
+        recycler_view.addItemDecoration(decoration);
+
+        setupViewModel();
     }
 
     @Override
@@ -124,7 +131,7 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == 0) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED
                     && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                getAuthToken();
+                launchImagePicker();
             }else{
                 Toast.makeText(MainActivity.this, "Permission denied, the permissions are very important for the apps usage", Toast.LENGTH_SHORT).show();
             }
@@ -134,20 +141,11 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         MenuInflater inflater = getMenuInflater();
-        inflater.inflate(R.menu.topbar, menu);
-
-        return true;
-    }
-
-    @Override
-    public boolean onPrepareOptionsMenu(Menu menu) {
-        super.onPrepareOptionsMenu(menu);
+        inflater.inflate(R.menu.topbar, menu);;
         if (postPath.isEmpty()) {
-            MenuItem menuItem = menu.findItem(R.id.upload);
-            menuItem.setVisible(false);
+            menu.findItem(R.id.upload).setVisible(Boolean.FALSE);
         }
-
-        return true;
+       return true;
     }
 
     @Override
@@ -157,12 +155,22 @@ public class MainActivity extends AppCompatActivity {
                 if (postPath.isEmpty() || postPath == null){
                     Toast.makeText(this, "select a valid image for classifying", Toast.LENGTH_SHORT).show();
                 }else {
-                    //
-                    // launchImagePicker();
+                    submitFile(postPath);
                 }
                 return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    private void setupViewModel() {
+        MainViewModel viewModel = ViewModelProviders.of(this).get(MainViewModel.class);
+        viewModel.getImageClassifier().observe(this, new Observer<List<ImageEntry>>() {
+            @Override
+            public void onChanged(@Nullable List<ImageEntry> imageEntries) {
+                Log.d(TAG, "Updating list of tasks from LiveData in ViewModel");
+                mAdapter.setTasks(imageEntries);
+            }
+        });
     }
 
     private void launchImagePicker(){
@@ -185,12 +193,14 @@ public class MainActivity extends AppCompatActivity {
                             case 2:
                                 image_header.setImageResource(R.color.colorPrimary);
                                 postPath.equals("");
+                                refreshActivity();
                                 break;
                         }
                     }
                 })
                 .show();
     }
+
 
     /**
      * Launching camera app to capture image
@@ -259,7 +269,6 @@ public class MainActivity extends AppCompatActivity {
                     image_header.setImageBitmap(BitmapFactory.decodeFile(mediaPath));
                     cursor.close();
                     postPath = mediaPath;
-                    bm = BitmapFactory.decodeFile(mediaPath);
                     invalidateOptionsMenu();
                    // String image = uploadImage(postPath);
                     //Toast.makeText(this, "this is base64, " + image, Toast.LENGTH_SHORT).show();
@@ -269,38 +278,12 @@ public class MainActivity extends AppCompatActivity {
                     setProgressBar();
                     Glide.with(this).load(mImageFileLocation).into(image_header);
                     postPath = mImageFileLocation;
-                    bm = BitmapFactory.decodeFile(postPath);
                     invalidateOptionsMenu();
                 }else{
                     setProgressBar();
                     Glide.with(this).load(fileUri).into(image_header);
                     postPath = fileUri.getPath();
-                    bm = BitmapFactory.decodeFile(postPath);
                     invalidateOptionsMenu();
-                }
-            }else if (requestCode == REQUEST_CODE_PICK_ACCOUNT) {
-                if (resultCode == RESULT_OK) {
-                    String email = data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME);
-                    AccountManager am = AccountManager.get(this);
-                    Account[] accounts = am.getAccountsByType(GoogleAuthUtil.GOOGLE_ACCOUNT_TYPE);
-                    for (Account account : accounts) {
-                        if (account.name.equals(email)) {
-                            mAccount = account;
-                            break;
-                        }
-                    }
-                    getAuthToken();
-                } else if (resultCode == RESULT_CANCELED) {
-                    Toast.makeText(this, "No Account Selected", Toast.LENGTH_SHORT)
-                            .show();
-                }
-            } else if (requestCode == REQUEST_ACCOUNT_AUTHORIZATION) {
-                if (resultCode == RESULT_OK) {
-                    Bundle extra = data.getExtras();
-                    onTokenReceived(extra.getString("authtoken"));
-                } else if (resultCode == RESULT_CANCELED) {
-                    Toast.makeText(this, "Authorization Failed", Toast.LENGTH_SHORT)
-                            .show();
                 }
             }
         }
@@ -397,13 +380,13 @@ public class MainActivity extends AppCompatActivity {
         return mediaFile;
     }
 
-    /*private String uploadImage(String picturePath) {
+    private String uploadImage(String picturePath) {
         Bitmap bm = BitmapFactory.decodeFile(picturePath);
         ByteArrayOutputStream bao = new ByteArrayOutputStream();
         String _bytes64Sting = "";
         if (bm != null){
             bm.compress(Bitmap.CompressFormat.JPEG, 90, bao);
-            byte[] byteArray = bao.toByteArray();
+            byteArray = bao.toByteArray();
             _bytes64Sting = Base64.encodeBytes(byteArray);
         }else {
 
@@ -411,9 +394,9 @@ public class MainActivity extends AppCompatActivity {
 
         return _bytes64Sting;
 
-    }*/
+    }
 
-    /*private List<Feature> getFeature(){
+    private List<Feature> getFeature(){
         List<Feature> featureList = new ArrayList<>();
         Feature feature = new Feature("LANDMARK_DETECTION", 1);
         Feature feature1 = new Feature("LABEL_DETECTION", 5);
@@ -438,22 +421,64 @@ public class MainActivity extends AppCompatActivity {
         List<Request> requestList = getRequests(byteImage);
         try {
             Service service = Client.createService(Service.class, BASE_URL);
-            Call<ImageClassifierRequest> call = service.imageClassifier(BuildConfig.VISION_API, new ImageClassifierRequest(requestList));
-            call.enqueue(new Callback<ImageClassifierRequest>() {
+            Call<ImageClassifierResponse> call = service.imageClassifier(BuildConfig.VISION_API, new ImageClassifierRequest(requestList));
+            call.enqueue(new Callback<ImageClassifierResponse>() {
                 @Override
-                public void onResponse(Call<ImageClassifierRequest> call, Response<ImageClassifierRequest> response) {
+                public void onResponse(Call<ImageClassifierResponse> call, retrofit2.Response<ImageClassifierResponse> response) {
                     if (response.isSuccessful()){
                         if (response.body() != null){
-                            hidepDialog();
-                           List<Request> request = response.body().getRequests();
-                            Toast.makeText(MainActivity.this, "result is " + request, Toast.LENGTH_SHORT).show();
+                            List<Response> responseList = response.body().getResponses();
+                            String delimiter = ", ";
+                            StringBuilder sb = new StringBuilder();
+                            String labelDesc = "";
+                            String landmarkDesc = "";
+                            Double latitude = null;
+                            Double longitude = null;
+                            for (Response response1 : responseList ){
+                                List<LandmarkAnnotation> landmarkAnnotationList = response1.getLandmarkAnnotations();
+                                List<LabelAnnotation> labelAnnotationList = response1.getLabelAnnotations();
+                                if (landmarkAnnotationList != null) {
+                                    for (LandmarkAnnotation landmarkAnnotation : landmarkAnnotationList) {
+                                        landmarkDesc = landmarkAnnotation.getDescription();
+                                        List<Location> locationList = landmarkAnnotation.getLocations();
+                                        for (Location location : locationList) {
+                                            LatLng latLng = location.getLatLng();
+                                            latitude = latLng.getLatitude();
+                                            longitude = latLng.getLongitude();
+                                        }
+                                    }
+                                }
+                                if (labelAnnotationList != null) {
+                                    for (LabelAnnotation labelAnnotation : labelAnnotationList) {
+                                        sb.append(delimiter).append(labelAnnotation.getDescription());
+                                    }
+                                    labelDesc = sb.toString().replaceFirst(delimiter, "");
+                                }
+                            }
+                            if (byteArray != null){
+                                final ImageEntry imageEntry = new ImageEntry(landmarkDesc, latitude, longitude, labelDesc, byteArray);
+                                AppExecutors.getInstance().diskIO().execute(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        mDb.imageClassifierDao().insertClassifier(imageEntry);
+                                    }
+                                });
+                                hidepDialog();
+                                refreshLayout();
+                                Toast.makeText(MainActivity.this, "image successfully classified and added to database", Toast.LENGTH_SHORT).show();
+                            }
                         }
+                    }else{
+                        hidepDialog();
+                        Log.d(TAG, "this is the error " + response.message());
+                        Toast.makeText(MainActivity.this, "this is the error " + response.message(), Toast.LENGTH_SHORT).show();
                     }
                 }
 
                 @Override
-                public void onFailure(Call<ImageClassifierRequest> call, Throwable t) {
+                public void onFailure(Call<ImageClassifierResponse> call, Throwable t) {
                     hidepDialog();
+                    Log.d(TAG, "this is the error " + t.getMessage());
                     Toast.makeText(MainActivity.this, "this is the error " + t.getMessage(), Toast.LENGTH_SHORT).show();
                 }
             });
@@ -461,69 +486,25 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(MainActivity.this, "cause of exception is " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
-*/
-   /* @SuppressLint("StaticFieldLeak")
-    private void callCloudVision(final Bitmap bitmap) throws IOException {
-        showpDialog();
+    private void refreshLayout(){
+        image_header.setImageResource(R.color.colorPrimary);
+        postPath.equals("");
+        refreshActivity();
+    }
 
-        new AsyncTask<Object, Void, BatchAnnotateImagesResponse>() {
-            @Override
-            protected BatchAnnotateImagesResponse doInBackground(Object... params) {
-                try {
-                    GoogleCredential credential = new GoogleCredential().setAccessToken(accessToken);
-                    HttpTransport httpTransport = AndroidHttp.newCompatibleTransport();
-                    JsonFactory jsonFactory = GsonFactory.getDefaultInstance();
+    private void refreshActivity(){
+        if (Build.VERSION.SDK_INT >= 11) {
+            recreate();
+        } else {
+            Intent intent = getIntent();
+            intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            finish();
+            overridePendingTransition(0, 0);
 
-                    Vision.Builder builder = new Vision.Builder
-                            (httpTransport, jsonFactory, credential);
-                    Vision vision = builder.build();
-
-                    List<Feature> featureList = new ArrayList<>();
-                    Feature labelDetection = new Feature();
-                    labelDetection.setType("LABEL_DETECTION");
-                    labelDetection.setMaxResults(10);
-                    featureList.add(labelDetection);
-
-                    Feature textDetection = new Feature();
-                    textDetection.setType("LANDMARK_DETECTION");
-                    textDetection.setMaxResults(10);
-                    featureList.add(textDetection);
-
-                    List<AnnotateImageRequest> imageList = new ArrayList<>();
-                    AnnotateImageRequest annotateImageRequest = new AnnotateImageRequest();
-                    Image base64EncodedImage = getBase64EncodedJpeg(bitmap);
-                    annotateImageRequest.setImage(base64EncodedImage);
-                    annotateImageRequest.setFeatures(featureList);
-                    imageList.add(annotateImageRequest);
-
-                    BatchAnnotateImagesRequest batchAnnotateImagesRequest =
-                            new BatchAnnotateImagesRequest();
-                    batchAnnotateImagesRequest.setRequests(imageList);
-
-                    Vision.Images.Annotate annotateRequest =
-                            vision.images().annotate(batchAnnotateImagesRequest);
-                    annotateRequest.setDisableGZipContent(true);
-                    Log.d(TAG, "Sending request to Google Cloud");
-
-                    BatchAnnotateImagesResponse response = annotateRequest.execute();
-                    return response;
-
-                } catch (GoogleJsonResponseException e) {
-                    Log.e(TAG, "Request error: " + e.getContent());
-                } catch (IOException e) {
-                    Log.d(TAG, "Request error: " + e.getMessage());
-                }
-                return null;
-            }
-
-            protected void onPostExecute(BatchAnnotateImagesResponse response) {
-                hidepDialog();
-                //textResults.setText(getDetectedTexts(response));
-                //labelResults.setText(getDetectedLabels(response));
-            }
-
-        }.execute();
-    }*/
+            startActivity(intent);
+            overridePendingTransition(0, 0);
+        }
+    }
 
     public void setProgressBar(){
         progressBar = new ProgressDialog(this);
@@ -584,36 +565,8 @@ public class MainActivity extends AppCompatActivity {
         if (progressBar.isShowing()) progressBar.dismiss();
     }
 
-    public Image getBase64EncodedJpeg(Bitmap bitmap) {
-        Image image = new Image();
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, byteArrayOutputStream);
-        byte[] imageBytes = byteArrayOutputStream.toByteArray();
-        image.encodeContent(imageBytes);
-        return image;
-    }
+    @Override
+    public void onItemClickListener(int itemId) {
 
-    private void getAuthToken() {
-        String SCOPE = "oauth2:https://www.googleapis.com/auth/cloud-platform";
-        if (mAccount == null) {
-            pickUserAccount();
-        } else {
-            new GetOAuthToken(MainActivity.this, mAccount, SCOPE, REQUEST_ACCOUNT_AUTHORIZATION)
-                    .execute();
-        }
     }
-
-    private void pickUserAccount() {
-        String[] accountTypes = new String[]{GoogleAuthUtil.GOOGLE_ACCOUNT_TYPE};
-        Intent intent = AccountPicker.newChooseAccountIntent(null, null,
-                accountTypes, false, null, null, null, null);
-        startActivityForResult(intent, REQUEST_CODE_PICK_ACCOUNT);
-    }
-
-    public void onTokenReceived(String token){
-        accessToken = token;
-        PreferenceUtils.saveToken(token, getApplicationContext());
-        launchImagePicker();
-    }
-
 }
