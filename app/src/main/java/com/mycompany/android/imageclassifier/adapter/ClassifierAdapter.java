@@ -3,11 +3,13 @@ package com.mycompany.android.imageclassifier.adapter;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.support.v7.widget.RecyclerView;
 import android.util.Base64;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
@@ -49,14 +51,17 @@ public class ClassifierAdapter extends RecyclerView.Adapter<ClassifierAdapter.Cl
         ImageEntry imageEntry = mImageEntries.get(position);
         String labeldesc = imageEntry.getLabeldesc();
         String landmarkdesc = imageEntry.getLandmarkdesc();
-        byte[] images = imageEntry.getImage();
+        String images = imageEntry.getImage();
 
         //Set values
         holder.label.setText(labeldesc);
         holder.location.setText(landmarkdesc);
-        Bitmap bmp = BitmapFactory.decodeByteArray(images, 0, images.length);
+        /*Bitmap bmp = BitmapFactory.decodeByteArray(images, 0, images.length);
         holder.imageView.setImageBitmap(Bitmap.createScaledBitmap(bmp, 200,
-                200, false));
+                200, false));*/
+        Glide.with(mContext)
+                .load(images)
+                .into(holder.imageView);
     }
 
     /**
@@ -82,14 +87,16 @@ public class ClassifierAdapter extends RecyclerView.Adapter<ClassifierAdapter.Cl
 
     public interface ItemClickListener {
         void onItemClickListener(int itemId);
+        void onImageClickListener(int itemId);
     }
 
     // Inner class for creating ViewHolders
-    class ClassifierViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
+            public class ClassifierViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
 
         TextView label;
         TextView location;
         CircleImageView imageView;
+        public RelativeLayout viewBackground, viewForeground;
 
         public ClassifierViewHolder(View itemView) {
             super(itemView);
@@ -97,13 +104,22 @@ public class ClassifierAdapter extends RecyclerView.Adapter<ClassifierAdapter.Cl
             label = itemView.findViewById(R.id.label);
             location = itemView.findViewById(R.id.location);
             imageView = itemView.findViewById(R.id.image);
+            viewBackground = itemView.findViewById(R.id.view_background);
+            viewForeground = itemView.findViewById(R.id.view_foreground);
             itemView.setOnClickListener(this);
+            imageView.setOnClickListener(this);
         }
 
         @Override
         public void onClick(View view) {
-            int elementId = mImageEntries.get(getAdapterPosition()).getId();
-            mItemClickListener.onItemClickListener(elementId);
+
+            if (view.getId() == imageView.getId()){
+                int elementId = mImageEntries.get(getAdapterPosition()).getId();
+                mItemClickListener.onImageClickListener(elementId);
+            } else {
+                int elementId = mImageEntries.get(getAdapterPosition()).getId();
+                mItemClickListener.onItemClickListener(elementId);
+            }
         }
     }
 }

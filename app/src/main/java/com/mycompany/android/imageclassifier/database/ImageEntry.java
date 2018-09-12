@@ -33,11 +33,14 @@ public class ImageEntry {
     @ColumnInfo(name = "labeldesc")
     private String labeldesc;
 
-    @ColumnInfo(name = "image",typeAffinity = ColumnInfo.BLOB)
-    private byte[] image;
+    @ColumnInfo(name = "image")
+    private String image;
+
+    /*@ColumnInfo(name = "image",typeAffinity = ColumnInfo.BLOB)
+    private byte[] image;*/
 
     @Ignore
-    public ImageEntry(String landmarkdesc, Double latitude, Double longitude, String labeldesc, byte[] image) {
+    public ImageEntry(String landmarkdesc, Double latitude, Double longitude, String labeldesc, String image) {
         this.landmarkdesc = landmarkdesc;
         this.latitude = latitude;
         this.longitude = longitude;
@@ -45,7 +48,7 @@ public class ImageEntry {
         this.image = image;
     }
 
-    public ImageEntry(int id, String landmarkdesc, Double latitude, Double longitude, String labeldesc, byte[] image) {
+    public ImageEntry(int id, String landmarkdesc, Double latitude, Double longitude, String labeldesc, String image) {
         this.id = id;
         this.landmarkdesc = landmarkdesc;
         this.latitude = latitude;
@@ -90,8 +93,8 @@ public class ImageEntry {
 
     public String getLabeldesc() { return labeldesc; }
 
-    public void setImage(byte[] image) { this.image = image; }
+    public void setImage(String image) { this.image = image; }
 
-    public byte[] getImage() { return image; }
+    public String getImage() { return image; }
 
 }
