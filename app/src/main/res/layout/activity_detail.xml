@@ -33,6 +33,44 @@
                 android:text="@string/classification"
                 android:textStyle="bold"
                 android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/classifiedText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="14dp"
+                android:textColor="@color/black"
+                android:layout_below="@+id/classification_review"
+                android:layout_marginStart="18dp" />
+
+            <LinearLayout
+                android:id="@+id/fragment_layout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_below="@+id/classifiedText">
+
+                <TextView
+                    android:id="@+id/landmark"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="10dp"
+                    android:textColor="@color/black"
+                    android:text="@string/landmark"
+                    android:textStyle="bold"
+                    android:textSize="16sp" />
+
+                <fragment xmlns:android="http://schemas.android.com/apk/res/android"
+                    xmlns:tools="http://schemas.android.com/tools"
+                    android:layout_width="match_parent"
+                    android:layout_height="200dp"
+                    android:id="@+id/map"
+                    android:layout_marginBottom="20dp"
+                    tools:context=".DetailActivity"
+                    android:name="com.google.android.gms.maps.SupportMapFragment" />
+
+            </LinearLayout>
+
         </RelativeLayout>
 
     </android.support.v4.widget.NestedScrollView>

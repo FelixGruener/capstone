@@ -91,7 +91,7 @@ public class ClassifierAdapter extends RecyclerView.Adapter<ClassifierAdapter.Cl
     }
 
     // Inner class for creating ViewHolders
-            public class ClassifierViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
+    public class ClassifierViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
 
         TextView label;
         TextView location;

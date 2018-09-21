@@ -6,10 +6,20 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
+import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import com.bumptech.glide.Glide;
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.MarkerOptions;
 import com.mycompany.android.imageclassifier.ViewModel.AddClassifierViewModel;
 import com.mycompany.android.imageclassifier.ViewModel.AddClassifierViewModelFactory;
 import com.mycompany.android.imageclassifier.database.AppDatabase;
@@ -22,7 +32,7 @@ import butterknife.ButterKnife;
  * Created by delaroy on 9/8/18.
  */
 
-public class DetailActivity extends AppCompatActivity {
+public class DetailActivity extends AppCompatActivity implements OnMapReadyCallback {
     // Extra for the image ID to be received in the intent
     public static final String EXTRA_IMAGE_ID = "extraImageId";
     // Extra for the image ID to be received after rotation
@@ -31,10 +41,21 @@ public class DetailActivity extends AppCompatActivity {
     private static final int DEFAULT_IMAGE_ID = -1;
     private int mImageId = DEFAULT_IMAGE_ID;
     private AppDatabase mDb;
-    Button mButton;
+    private Button mButton;
+    private GoogleMap mMap;
+    private String labelDescription = "";
+    private String landmarkDescription = "";
+    private Double latitude ;
+    private Double longitude;
 
     @BindView(R.id.classifier_image)
     ImageView classifier_image;
+
+    @BindView(R.id.fragment_layout)
+    LinearLayout fragmentLayout;
+
+    @BindView(R.id.classifiedText)
+    TextView classifiedText;
 
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -56,7 +77,6 @@ public class DetailActivity extends AppCompatActivity {
             final AddClassifierViewModel viewModel
                     = ViewModelProviders.of(this, factory).get(AddClassifierViewModel.class);
 
-            // COMPLETED (12) Observe the LiveData object in the ViewModel. Use it also when removing the observer
             viewModel.getImageClassifier().observe(this, new Observer<ImageEntry>() {
                 @Override
                 public void onChanged(@Nullable ImageEntry taskEntry) {
@@ -65,6 +85,7 @@ public class DetailActivity extends AppCompatActivity {
                 }
             });
         }
+
     }
 
     @Override
@@ -78,11 +99,36 @@ public class DetailActivity extends AppCompatActivity {
             return;
         }
 
-       String image = imageentry.getImage();
+        String image = imageentry.getImage();
+        labelDescription = imageentry.getLabeldesc();
+        landmarkDescription = imageentry.getLandmarkdesc();
+        latitude = imageentry.getLatitude();
+        longitude = imageentry.getLongitude();
+
+        classifiedText.setText(labelDescription);
 
         Glide.with(this)
                 .load(image)
                 .into(classifier_image);
 
+        if (landmarkDescription.isEmpty()) {
+            fragmentLayout.setVisibility(View.INVISIBLE);
+        } else {
+
+            SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
+                    .findFragmentById(R.id.map);
+            mapFragment.getMapAsync(this);
+        }
+
+
+    }
+
+    @Override
+    public void onMapReady(GoogleMap googleMap) {
+        mMap = googleMap;
+
+        LatLng sydney = new LatLng(latitude, longitude);
+        mMap.addMarker(new MarkerOptions().position(sydney).title(landmarkDescription));
+        mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney));
     }
 }

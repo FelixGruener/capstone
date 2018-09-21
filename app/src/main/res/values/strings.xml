@@ -5,7 +5,8 @@
     <string name="upload_file">Upload file</string>
     <string name="uploadImages">Set your image</string>
     <string name="msg_loading">Scanning image with Vision API...</string>
-    <string name="classification">Classification Review</string>
+    <string name="classification">Image label description</string>
     <string name="delete">Delete</string>
     <string name="transition_string">show image</string>
+    <string name="landmark">Landmark Location</string>
 </resources>
