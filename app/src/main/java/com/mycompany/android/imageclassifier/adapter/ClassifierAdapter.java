@@ -1,11 +1,8 @@
 package com.mycompany.android.imageclassifier.adapter;
 
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.net.Uri;
+import android.database.Cursor;
 import android.support.v7.widget.RecyclerView;
-import android.util.Base64;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -13,13 +10,17 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
-import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.mycompany.android.imageclassifier.R;
-import com.mycompany.android.imageclassifier.database.ImageEntry;
-
-import java.util.List;
+import com.mycompany.android.imageclassifier.model.Classification;
 
 import de.hdodenhof.circleimageview.CircleImageView;
+
+import static android.provider.BaseColumns._ID;
+import static com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract.ClassificationEntry.COLUMN_IMAGE;
+import static com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract.ClassificationEntry.COLUMN_LABEL_DESC;
+import static com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract.ClassificationEntry.COLUMN_LANDMARK_DESC;
+import static com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract.ClassificationEntry.COLUMN_LATITUDE;
+import static com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract.ClassificationEntry.COLUMN_LONGITUDE;
 
 /**
  * Created by delaroy on 9/5/18.
@@ -29,10 +30,14 @@ public class ClassifierAdapter extends RecyclerView.Adapter<ClassifierAdapter.Cl
 
     // Member variable to handle item clicks
     final private ItemClickListener mItemClickListener;
-    private List<ImageEntry> mImageEntries;
+
+    private Cursor cursor;
     private Context mContext;
+    private final LayoutInflater inflater;
+
 
     public ClassifierAdapter(Context context, ItemClickListener listener) {
+        inflater = LayoutInflater.from(context);
         mContext = context;
         mItemClickListener = listener;
     }
@@ -47,48 +52,82 @@ public class ClassifierAdapter extends RecyclerView.Adapter<ClassifierAdapter.Cl
 
     @Override
     public void onBindViewHolder(ClassifierViewHolder holder, int position) {
-        // Determine the values of the wanted data
-        ImageEntry imageEntry = mImageEntries.get(position);
-        String labeldesc = imageEntry.getLabeldesc();
-        String landmarkdesc = imageEntry.getLandmarkdesc();
-        String images = imageEntry.getImage();
 
-        //Set values
-        holder.label.setText(labeldesc);
-        holder.location.setText(landmarkdesc);
-        /*Bitmap bmp = BitmapFactory.decodeByteArray(images, 0, images.length);
-        holder.imageView.setImageBitmap(Bitmap.createScaledBitmap(bmp, 200,
-                200, false));*/
-        Glide.with(mContext)
-                .load(images)
-                .into(holder.imageView);
+        if (cursor != null) {
+            if (cursor.moveToPosition(position)) {
+                int indexid = cursor.getColumnIndex(_ID);
+                int landmark_desc = cursor.getColumnIndex(COLUMN_LANDMARK_DESC);
+                int latitude = cursor.getColumnIndex(COLUMN_LATITUDE);
+                int longitude = cursor.getColumnIndex(COLUMN_LONGITUDE);
+                int label_desc = cursor.getColumnIndex(COLUMN_LABEL_DESC);
+                int image = cursor.getColumnIndex(COLUMN_IMAGE);
+
+                int id = cursor.getInt(indexid);
+                String landmarkDesc = cursor.getString(landmark_desc);
+                Double mlatitude = cursor.getDouble(latitude);
+                Double mlongitude = cursor.getDouble(longitude);
+                String labelDesc = cursor.getString(label_desc);
+                String mImage = cursor.getString(image);
+
+                holder.itemView.setTag(id);
+                holder.label.setText(labelDesc);
+                holder.location.setText(landmarkDesc);
+                Glide.with(mContext)
+                        .load(mImage)
+                        .into(holder.imageView);
+
+
+            }
+        }
     }
 
-    /**
-     * Returns the number of items to display.
-     */
+    public Cursor setData(Cursor c) {
+        // check if this cursor is the same as the previous cursor (mCursor)
+        if (cursor == c) {
+            return null; // bc nothing has changed
+        }
+        Cursor temp = cursor;
+        this.cursor = c; // new cursor value assigned
+
+        //check if this is a valid cursor, then update the cursor
+        if (c != null) {
+            this.notifyDataSetChanged();
+        }
+        return temp;
+    }
+
+
     @Override
     public int getItemCount() {
-        if (mImageEntries == null) {
-            return 0;
+        if (cursor != null) {
+            return cursor.getCount();
+        } else {
+            return -1;
         }
-        return mImageEntries.size();
     }
 
-    public List<ImageEntry> getClassifier() {
-        return mImageEntries;
-    }
-
-
-    public void setTasks(List<ImageEntry> imageEntries) {
-        mImageEntries = imageEntries;
-        notifyDataSetChanged();
+    @Override
+    public long getItemId(int position) {
+        return getItem(position).id;
     }
 
     public interface ItemClickListener {
-        void onItemClickListener(int itemId);
-        void onImageClickListener(int itemId);
+        void onItemClick(View v, int position);
     }
+
+    public Classification getItem(int position) {
+        if (!cursor.moveToPosition(position)) {
+            throw new IllegalStateException("Invalid item position requested");
+        }
+        return new Classification(cursor);
+    }
+
+    private void postItemClick(ClassifierViewHolder holder) {
+        if (mItemClickListener != null) {
+            mItemClickListener.onItemClick(holder.itemView, holder.getAdapterPosition());
+        }
+    }
+
 
     // Inner class for creating ViewHolders
     public class ClassifierViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
@@ -106,20 +145,13 @@ public class ClassifierAdapter extends RecyclerView.Adapter<ClassifierAdapter.Cl
             imageView = itemView.findViewById(R.id.image);
             viewBackground = itemView.findViewById(R.id.view_background);
             viewForeground = itemView.findViewById(R.id.view_foreground);
+
             itemView.setOnClickListener(this);
-            imageView.setOnClickListener(this);
         }
 
         @Override
         public void onClick(View view) {
-
-            if (view.getId() == imageView.getId()){
-                int elementId = mImageEntries.get(getAdapterPosition()).getId();
-                mItemClickListener.onImageClickListener(elementId);
-            } else {
-                int elementId = mImageEntries.get(getAdapterPosition()).getId();
-                mItemClickListener.onItemClickListener(elementId);
-            }
+            postItemClick(this);
         }
     }
 }

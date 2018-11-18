@@ -50,6 +50,28 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/provider_paths"/>
         </provider>
+        <receiver android:name=".widget.ClassificationWidgetProvider">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/classifier_widget_provider_info" />
+        </receiver>
+
+        <service android:name=".widget.ClassificationWidgetService" />
+
+        <service
+            android:name=".widget.ListRemoteService"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <provider
+            android:name="com.mycompany.android.imageclassifier.data.ClassificationProvider"
+            android:authorities="com.mycompany.android.imageclassifier"
+            android:exported="true" />
+
+
     </application>
 
 </manifest>

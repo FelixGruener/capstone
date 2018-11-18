@@ -2,8 +2,8 @@ package com.mycompany.android.imageclassifier;
 
 import android.Manifest;
 import android.app.ProgressDialog;
-import android.arch.lifecycle.Observer;
-import android.arch.lifecycle.ViewModelProviders;
+import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -14,10 +14,14 @@ import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.provider.MediaStore;
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.app.LoaderManager;
 import android.support.v4.content.ContextCompat;
+import android.support.v4.content.CursorLoader;
 import android.support.v4.content.FileProvider;
+import android.support.v4.content.Loader;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.DividerItemDecoration;
@@ -34,11 +38,8 @@ import android.widget.Toast;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.bumptech.glide.Glide;
-import com.mycompany.android.imageclassifier.ViewModel.AppExecutors;
-import com.mycompany.android.imageclassifier.ViewModel.MainViewModel;
 import com.mycompany.android.imageclassifier.adapter.ClassifierAdapter;
-import com.mycompany.android.imageclassifier.database.AppDatabase;
-import com.mycompany.android.imageclassifier.database.ImageEntry;
+import com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract;
 import com.mycompany.android.imageclassifier.model.request.Image;
 import com.mycompany.android.imageclassifier.model.request.Feature;
 import com.mycompany.android.imageclassifier.model.request.ImageClassifierRequest;
@@ -52,6 +53,7 @@ import com.mycompany.android.imageclassifier.model.response.ImageClassifierRespo
 import com.mycompany.android.imageclassifier.networking.Client;
 import com.mycompany.android.imageclassifier.networking.Service;
 import com.mycompany.android.imageclassifier.utils.Base64;
+import com.mycompany.android.imageclassifier.widget.ClassificationWidgetService;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -69,9 +71,16 @@ import retrofit2.Call;
 import retrofit2.Callback;
 
 import static android.widget.LinearLayout.VERTICAL;
+import static com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract.ClassificationEntry.COLUMN_IMAGE;
+import static com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract.ClassificationEntry.COLUMN_LABEL_DESC;
+import static com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract.ClassificationEntry.COLUMN_LANDMARK_DESC;
+import static com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract.ClassificationEntry.COLUMN_LATITUDE;
+import static com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract.ClassificationEntry.COLUMN_LONGITUDE;
+import static com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract.ClassificationEntry.CONTENT_URI;
+import static com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract.ClassificationEntry._ID;
 import static com.mycompany.android.imageclassifier.utils.Constants.BASE_URL;
 
-public class MainActivity extends AppCompatActivity implements ClassifierAdapter.ItemClickListener{
+public class MainActivity extends AppCompatActivity implements ClassifierAdapter.ItemClickListener, LoaderManager.LoaderCallbacks<Cursor> {
     @BindView(R.id.selectImage)
     ImageView selectImage;
 
@@ -81,6 +90,7 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
     @BindView(R.id.image_header)
     ImageView image_header;
 
+    private static final int CLASSIFIER_LOADER = 4;
     private static final int REQUEST_TAKE_PHOTO = 0;
     private static final int REQUEST_PICK_PHOTO = 2;
     private Uri mMediaUri;
@@ -96,7 +106,7 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
     private int progressBarStatus = 0;
     private Handler progressBarbHandler = new Handler();
     private byte[] byteArray;
-    private AppDatabase mDb;
+    public static final String EXTRA_CLASSIFICATION = "extra_classification";
     private ClassifierAdapter mAdapter;
 
     @Override
@@ -106,20 +116,17 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
 
         ButterKnife.bind(this);
         initpDialog();
-        selectImage.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if ((ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)) {
-                    ActivityCompat.requestPermissions(MainActivity.this, new String[] { Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE }, 0);
-                } else {
-                    launchImagePicker();
-                }
+        selectImage.setOnClickListener(v -> {
+            if ((ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)) {
+                ActivityCompat.requestPermissions(MainActivity.this, new String[] { Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE }, 0);
+            } else {
+                launchImagePicker();
             }
         });
-        mDb = AppDatabase.getInstance(getApplicationContext());
 
         recycler_view.setLayoutManager(new LinearLayoutManager(this));
         mAdapter = new ClassifierAdapter(this, this);
+
         recycler_view.setAdapter(mAdapter);
         DividerItemDecoration decoration = new DividerItemDecoration(getApplicationContext(), VERTICAL);
         recycler_view.addItemDecoration(decoration);
@@ -133,22 +140,26 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
             // Called when a user swipes left or right on a ViewHolder
             @Override
             public void onSwiped(final RecyclerView.ViewHolder viewHolder, int swipeDir) {
-                if (viewHolder instanceof ClassifierAdapter.ClassifierViewHolder) {
-                    // Here is where you'll implement swipe to delete
-                    AppExecutors.getInstance().diskIO().execute(new Runnable() {
-                        @Override
-                        public void run() {
-                            int position = viewHolder.getAdapterPosition();
-                            List<ImageEntry> imageEntries = mAdapter.getClassifier();
-                            mDb.imageClassifierDao().deleteClassifier(imageEntries.get(position));
-                        }
-                    });
+                // Here is where you'll implement swipe to delete
+                if (viewHolder != null) {
+                    int id = (int) viewHolder.itemView.getTag();
+
+                    // Build appropriate uri with String row id appended
+                    String stringId = Integer.toString(id);
+                    Uri uri = CONTENT_URI;
+                    uri = uri.buildUpon().appendPath(stringId).build();
+
+                    getContentResolver().delete(uri, null, null);
+
+                    getSupportLoaderManager().restartLoader(CLASSIFIER_LOADER, null, MainActivity.this);
                     Toast.makeText(MainActivity.this, "item successfully deleted", Toast.LENGTH_SHORT).show();
+                    ClassificationWidgetService.startActionUpdateWidgets(getApplicationContext());
                 }
             }
         }).attachToRecyclerView(recycler_view);
 
-        setupViewModel();
+        getSupportLoaderManager().initLoader(CLASSIFIER_LOADER, null, this);
+        ClassificationWidgetService.startActionUpdateWidgets(this);
     }
 
     @Override
@@ -187,40 +198,26 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
         return super.onOptionsItemSelected(item);
     }
 
-    private void setupViewModel() {
-        MainViewModel viewModel = ViewModelProviders.of(this).get(MainViewModel.class);
-        viewModel.getImageClassifier().observe(this, new Observer<List<ImageEntry>>() {
-            @Override
-            public void onChanged(@Nullable List<ImageEntry> imageEntries) {
-                Log.d(TAG, "Updating list of tasks from LiveData in ViewModel");
-                mAdapter.setTasks(imageEntries);
-            }
-        });
-    }
-
     private void launchImagePicker(){
         new MaterialDialog.Builder(this)
                 .title(R.string.uploadImages)
                 .items(R.array.uploadImages)
                 .itemsIds(R.array.itemIds)
-                .itemsCallback(new MaterialDialog.ListCallback() {
-                    @Override
-                    public void onSelection(MaterialDialog dialog, View view, int which, CharSequence text) {
-                        switch (which) {
-                            case 0:
-                                Intent galleryIntent = new Intent(Intent.ACTION_PICK,
-                                        android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-                                startActivityForResult(galleryIntent, REQUEST_PICK_PHOTO);
-                                break;
-                            case 1:
-                                captureImage();
-                                break;
-                            case 2:
-                                image_header.setImageResource(R.color.colorPrimary);
-                                postPath.equals("");
-                                refreshActivity();
-                                break;
-                        }
+                .itemsCallback((dialog, view, which, text) -> {
+                    switch (which) {
+                        case 0:
+                            Intent galleryIntent = new Intent(Intent.ACTION_PICK,
+                                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+                            startActivityForResult(galleryIntent, REQUEST_PICK_PHOTO);
+                            break;
+                        case 1:
+                            captureImage();
+                            break;
+                        case 2:
+                            image_header.setImageResource(R.color.colorPrimary);
+                            postPath.equals("");
+                            refreshActivity();
+                            break;
                     }
                 })
                 .show();
@@ -480,14 +477,16 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
                                     labelDesc = sb.toString().replaceFirst(delimiter, "");
                                 }
                             }
+
                             if (byteArray != null){
-                                final ImageEntry imageEntry = new ImageEntry(landmarkDesc, latitude, longitude, labelDesc, postPath);
-                                AppExecutors.getInstance().diskIO().execute(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        mDb.imageClassifierDao().insertClassifier(imageEntry);
-                                    }
-                                });
+                                ContentValues contentValues = new ContentValues();
+                                contentValues.put(COLUMN_LANDMARK_DESC, landmarkDesc);
+                                contentValues.put(COLUMN_LATITUDE, latitude);
+                                contentValues.put(COLUMN_LONGITUDE, longitude);
+                                contentValues.put(COLUMN_LABEL_DESC, labelDesc);
+                                contentValues.put(COLUMN_IMAGE, postPath);
+
+                                getContentResolver().insert(CONTENT_URI, contentValues);
                                 hidepDialog();
                                 refreshLayout();
                                 Toast.makeText(MainActivity.this, "image successfully classified and added to database", Toast.LENGTH_SHORT).show();
@@ -540,35 +539,32 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
         progressBar.setMax(100);
         progressBar.show();
         progressBarStatus = 0;
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                while (progressBarStatus < 100){
-                    progressBarStatus += 30;
+        new Thread(() -> {
+            while (progressBarStatus < 100){
+                progressBarStatus += 30;
 
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-
-                    progressBarbHandler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            progressBar.setProgress(progressBarStatus);
-                        }
-                    });
-                }
-                if (progressBarStatus >= 100) {
-                    try {
-                        Thread.sleep(2000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                    progressBar.dismiss();
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
 
+                progressBarbHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        progressBar.setProgress(progressBarStatus);
+                    }
+                });
             }
+            if (progressBarStatus >= 100) {
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                progressBar.dismiss();
+            }
+
         }).start();
     }
 
@@ -590,15 +586,55 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
         if (progressBar.isShowing()) progressBar.dismiss();
     }
 
+    /* Click events in RecyclerView items */
     @Override
-    public void onItemClickListener(int itemId) {
+    public void onItemClick(View v, int position) {
+
         Intent intent = new Intent(MainActivity.this, DetailActivity.class);
-        intent.putExtra(DetailActivity.EXTRA_IMAGE_ID, itemId);
+        Uri currentTaskUri = ContentUris.withAppendedId(CONTENT_URI, mAdapter.getItemId(position));
+        intent.setData(currentTaskUri);
         startActivity(intent);
     }
 
-    @Override
-    public void onImageClickListener(int itemId) {
 
+    @NonNull
+    @Override
+    public Loader<Cursor> onCreateLoader(int id, @Nullable Bundle args) {
+
+        String[] projection = {
+                _ID,
+                COLUMN_LANDMARK_DESC,
+                COLUMN_LATITUDE,
+                COLUMN_LONGITUDE,
+                COLUMN_LABEL_DESC,
+                COLUMN_IMAGE
+        };
+
+        return new CursorLoader(this,
+                CONTENT_URI,
+                projection,
+                null,
+                null,
+                null);
     }
+
+    @Override
+    public void onLoadFinished(@NonNull Loader<Cursor> loader, Cursor data) {
+
+        mAdapter.setData(data);
+    }
+
+    @Override
+    public void onLoaderReset(@NonNull Loader<Cursor> loader) {
+        mAdapter.setData(null);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        getSupportLoaderManager().restartLoader(CLASSIFIER_LOADER, null, this);
+        ClassificationWidgetService.startActionUpdateWidgets(this);
+    }
+
 }

@@ -2,4 +2,16 @@
 <resources>
     <dimen name="padd_10">10dp</dimen>
     <dimen name="ic_delete">30dp</dimen>
+    <dimen name="widget_margin">8dp</dimen>
+    <dimen name="margin_8dp">8dp</dimen>
+    <dimen name="secondary_text_size">18sp</dimen>
+
+    <dimen name="margin_padding_xsmall">2dp</dimen>
+    <dimen name="margin_padding_small">4dp</dimen>
+    <dimen name="margin_padding_medium">8dp</dimen>
+    <dimen name="margin_padding_large">12dp</dimen>
+    <dimen name="margin_padding_zero">0dp</dimen>
+    <dimen name="margin_padding_one_dp">1dp</dimen>
+    <dimen name="widget_image_size">50dp</dimen>
+
 </resources>
