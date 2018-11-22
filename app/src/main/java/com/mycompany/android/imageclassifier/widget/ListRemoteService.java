@@ -7,8 +7,6 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.widget.RemoteViews;
 import android.widget.RemoteViewsService;
-
-import com.mycompany.android.imageclassifier.MainActivity;
 import com.mycompany.android.imageclassifier.R;
 import com.mycompany.android.imageclassifier.model.Classification;
 

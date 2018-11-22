@@ -2,12 +2,23 @@
     <string name="app_name">ImageClassifier</string>
     <string name="search_title">Search</string>
     <string name="search_hint">Search</string>
-    <string name="upload_file">Upload file</string>
     <string name="uploadImages">Set your image</string>
-    <string name="msg_loading">Scanning image with Vision API...</string>
+    <string name="msg_loading">Scanning image with Vision API…</string>
     <string name="classification">Image label description</string>
     <string name="delete">Delete</string>
-    <string name="transition_string">show image</string>
     <string name="landmark">Landmark Location</string>
-    <string name="empty_widget_list" >No Classification Information Available</string>
+    <string name="classifier">classifier image</string>
+    <string name="image_header">Image header</string>
+    <string name="selectedIcon">Selected icon</string>
+    <string name="widget_placeholder">Widget placeholder</string>
+    <string name="dialog">Dialog</string>
+    <string name="empty_list">Empty list</string>
+    <string name="background_widget">Background widget</string>
+    <string name="upload">Upload</string>
+    <string name="delete_success">item successfully deleted</string>
+    <string name="permission_denied">Permission denied, the permissions are very important for the apps usage</string>
+    <string name="valid_image">select a valid image for classifying</string>
+    <string name="error">Sorry, there was an error!</string>
+    <string name="classified_successfully">image successfully classified and added to database</string>
+    <string name="error_classifying">error classifying</string>
 </resources>

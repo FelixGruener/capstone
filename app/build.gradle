@@ -1,15 +1,25 @@
 apply plugin: 'com.android.application'
 
 android {
+    signingConfigs {
+        release {
+            keyAlias 'capstone'
+            keyPassword 'CapstonE'
+            storeFile file('capstone.jks')
+            storePassword 'CapstonE'
+        }
+    }
+
     compileSdkVersion 27
-    buildToolsVersion "27.0.3"
+    buildToolsVersion '28.0.3'
     defaultConfig {
         applicationId "com.mycompany.android.imageclassifier"
-        minSdkVersion 15
+        minSdkVersion 17
         targetSdkVersion 27
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        signingConfig signingConfigs.release
     }
     defaultConfig {
         multiDexEnabled true
@@ -18,11 +28,26 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
 
     buildTypes.each{
         it.buildConfigField 'String', 'VISION_API', VisionApi
+    }
+
+    flavorDimensions "imageclassifier"
+    productFlavors {
+        free {
+            minSdkVersion 17
+            applicationId 'com.mycompany.android.imageclassifier'
+            signingConfig signingConfigs.release
+            targetSdkVersion 27
+            dimension "imageclassifier"
+            testInstrumentationRunner 'android.support.test.runner.AndroidJUnitRunner'
+            versionCode 1
+            versionName '1.0'
+        }
     }
 
     packagingOptions {
@@ -35,6 +60,7 @@ android {
         exclude 'META-INF/notice.txt'
         exclude 'META-INF/ASL2.0'
     }
+
     compileOptions {
         sourceCompatibility = '1.8'
         targetCompatibility = '1.8'

@@ -6,15 +6,11 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
-import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
 import com.mycompany.android.imageclassifier.R;
 import com.mycompany.android.imageclassifier.model.WidgetType;
-
-import java.util.List;
-
 import static com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract.ClassificationEntry.CONTENT_URI;
 
 public class ClassificationWidgetService extends IntentService {

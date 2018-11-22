@@ -39,7 +39,6 @@ import android.widget.Toast;
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.bumptech.glide.Glide;
 import com.mycompany.android.imageclassifier.adapter.ClassifierAdapter;
-import com.mycompany.android.imageclassifier.data.ClassificationDatabaseContract;
 import com.mycompany.android.imageclassifier.model.request.Image;
 import com.mycompany.android.imageclassifier.model.request.Feature;
 import com.mycompany.android.imageclassifier.model.request.ImageClassifierRequest;
@@ -93,7 +92,6 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
     private static final int CLASSIFIER_LOADER = 4;
     private static final int REQUEST_TAKE_PHOTO = 0;
     private static final int REQUEST_PICK_PHOTO = 2;
-    private Uri mMediaUri;
     private static final int CAMERA_PIC_REQUEST = 1111;
     public static final int MEDIA_TYPE_IMAGE = 1;
     private Uri fileUri;
@@ -106,8 +104,9 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
     private int progressBarStatus = 0;
     private Handler progressBarbHandler = new Handler();
     private byte[] byteArray;
-    public static final String EXTRA_CLASSIFICATION = "extra_classification";
     private ClassifierAdapter mAdapter;
+    private static final String POST_PATH = "post_path";
+    private String path;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -152,15 +151,22 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
                     getContentResolver().delete(uri, null, null);
 
                     getSupportLoaderManager().restartLoader(CLASSIFIER_LOADER, null, MainActivity.this);
-                    Toast.makeText(MainActivity.this, "item successfully deleted", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, R.string.delete_success, Toast.LENGTH_SHORT).show();
                     ClassificationWidgetService.startActionUpdateWidgets(getApplicationContext());
                 }
             }
         }).attachToRecyclerView(recycler_view);
 
+        if (savedInstanceState != null) {
+            path = savedInstanceState.getString(POST_PATH);
+            postPath = path;
+            Glide.with(this).load(path).into(image_header);
+        }
+
         getSupportLoaderManager().initLoader(CLASSIFIER_LOADER, null, this);
         ClassificationWidgetService.startActionUpdateWidgets(this);
     }
+
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -169,7 +175,7 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
                     && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 launchImagePicker();
             }else{
-                Toast.makeText(MainActivity.this, "Permission denied, the permissions are very important for the apps usage", Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, R.string.permission_denied, Toast.LENGTH_SHORT).show();
             }
         }
     }
@@ -189,7 +195,7 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
         switch (item.getItemId()) {
             case R.id.upload:
                 if (postPath.isEmpty() || postPath == null){
-                    Toast.makeText(this, "select a valid image for classifying", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, R.string.valid_image, Toast.LENGTH_SHORT).show();
                 }else {
                     submitFile(postPath);
                 }
@@ -291,26 +297,27 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
                     image_header.setImageBitmap(BitmapFactory.decodeFile(mediaPath));
                     cursor.close();
                     postPath = mediaPath;
+                    path = mediaPath;
                     invalidateOptionsMenu();
-                   // String image = uploadImage(postPath);
-                    //Toast.makeText(this, "this is base64, " + image, Toast.LENGTH_SHORT).show();
                 }
             }else if (requestCode == CAMERA_PIC_REQUEST){
                 if (Build.VERSION.SDK_INT > 21) {
                     setProgressBar();
                     Glide.with(this).load(mImageFileLocation).into(image_header);
                     postPath = mImageFileLocation;
+                    path = postPath;
                     invalidateOptionsMenu();
                 }else{
                     setProgressBar();
                     Glide.with(this).load(fileUri).into(image_header);
                     postPath = fileUri.getPath();
+                    path = postPath;
                     invalidateOptionsMenu();
                 }
             }
         }
         else if (resultCode != RESULT_CANCELED) {
-            Toast.makeText(this, "Sorry, there was an error!", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.error, Toast.LENGTH_LONG).show();
         }
     }
 
@@ -350,6 +357,7 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
 
         // save file url in bundle as it will be null on screen orientation
         // changes
+        outState.putString(POST_PATH, path);
         outState.putParcelable("file_uri", fileUri);
     }
 
@@ -358,18 +366,19 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
         super.onRestoreInstanceState(savedInstanceState);
 
         // get the file url
+        path = savedInstanceState.getString(POST_PATH);
         fileUri = savedInstanceState.getParcelable("file_uri");
     }
 
     /**
-     * Creating file uri to store image/video
+     * Creating file uri to store image
      */
     public Uri getOutputMediaFileUri(int type) {
         return Uri.fromFile(getOutputMediaFile(type));
     }
 
     /**
-     * returning image / video
+     * returning image
      */
     private static File getOutputMediaFile(int type) {
 
@@ -489,45 +498,34 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
                                 getContentResolver().insert(CONTENT_URI, contentValues);
                                 hidepDialog();
                                 refreshLayout();
-                                Toast.makeText(MainActivity.this, "image successfully classified and added to database", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(MainActivity.this, R.string.classified_successfully, Toast.LENGTH_SHORT).show();
                             }
                         }
                     }else{
                         hidepDialog();
-                        Log.d(TAG, "this is the error " + response.message());
-                        Toast.makeText(MainActivity.this, "this is the error " + response.message(), Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, R.string.error_classifying, Toast.LENGTH_SHORT).show();
                     }
                 }
 
                 @Override
                 public void onFailure(Call<ImageClassifierResponse> call, Throwable t) {
                     hidepDialog();
-                    Log.d(TAG, "this is the error " + t.getMessage());
-                    Toast.makeText(MainActivity.this, "this is the error " + t.getMessage(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, R.string.error_classifying, Toast.LENGTH_SHORT).show();
                 }
             });
         } catch (Exception e){
-            Toast.makeText(MainActivity.this, "cause of exception is " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(MainActivity.this, R.string.error_classifying, Toast.LENGTH_SHORT).show();
         }
     }
     private void refreshLayout(){
         image_header.setImageResource(R.color.colorPrimary);
         postPath.equals("");
+        path.equals("");
         refreshActivity();
     }
 
     private void refreshActivity(){
-        if (Build.VERSION.SDK_INT >= 11) {
-            recreate();
-        } else {
-            Intent intent = getIntent();
-            intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
-            finish();
-            overridePendingTransition(0, 0);
-
-            startActivity(intent);
-            overridePendingTransition(0, 0);
-        }
+        recreate();
     }
 
     public void setProgressBar(){
@@ -549,12 +547,7 @@ public class MainActivity extends AppCompatActivity implements ClassifierAdapter
                     e.printStackTrace();
                 }
 
-                progressBarbHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        progressBar.setProgress(progressBarStatus);
-                    }
-                });
+                progressBarbHandler.post(() -> progressBar.setProgress(progressBarStatus));
             }
             if (progressBarStatus >= 100) {
                 try {

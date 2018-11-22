@@ -9,4 +9,5 @@
     <color name="bg_row_background">#fa315b</color>
     <color name="primary_light">#FFCDD2</color>
     <color name="colorWhite">#fff</color>
+    <color name="blue">#09C</color>
 </resources>

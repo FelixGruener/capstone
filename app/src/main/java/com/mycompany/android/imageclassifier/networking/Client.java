@@ -1,6 +1,5 @@
 package com.mycompany.android.imageclassifier.networking;
 
-import android.content.Context;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -9,7 +8,6 @@ import com.mycompany.android.imageclassifier.BuildConfig;
 import java.text.DateFormat;
 import java.util.concurrent.TimeUnit;
 
-import okhttp3.Cache;
 import okhttp3.OkHttpClient;
 import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
